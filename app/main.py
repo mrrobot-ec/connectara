@@ -15,6 +15,9 @@ async def lifespan(app: FastAPI):
     # Since we create container here, we can use it directly if we keep reference
     # But better to use the one attached to app
     container = app.container
+    # Ensure Neo4j Indices
+    await container.neo4j_adapter().ensure_index()
+
     consumer: EventConsumer = container.event_consumer()
     await consumer.start()
     yield
