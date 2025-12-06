@@ -39,7 +39,7 @@ class KafkaEventConsumer(EventConsumer):
             sasl_plain_username=self.sasl_username,
             sasl_plain_password=self.sasl_password,
             value_deserializer=lambda x: json.loads(x.decode('utf-8')),
-            auto_offset_reset="earliest" # Ensure we don't miss messages
+            auto_offset_reset="latest" # Only read new messages from when consumer starts
         )
         await self.consumer.start()
         self.running = True
