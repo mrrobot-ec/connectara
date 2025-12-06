@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+neo4j
+httpx
+pydantic
+python-dotenv
+dependency-injector
+google-adk
+duckduckgo-search
+googlesearch-python
+google-api-python-client
+beautifulsoup4
+aiokafka
