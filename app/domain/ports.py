@@ -17,6 +17,14 @@ class DiscoveryService(ABC):
 class RetrievalService(ABC):
     @abstractmethod
     async def fetch_content(self, urls: List[str]) -> List[str]:
+        """Fetch content from multiple URLs."""
+        pass
+
+    @abstractmethod
+    async def fetch_validated_content(self, urls: List[str], expected_name: str, expected_profile_url: str) -> List[str]:
+        """Fetch and validate content from URLs, ensuring posts belong to the expected author."""
+        pass
+
     @abstractmethod
     async def extract_content(self, url: str) -> Optional[str]:
         """Fetch content from a single URL."""
