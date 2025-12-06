@@ -35,6 +35,10 @@ class SeriesMessagingAdapter(MessagingService):
             return response.json()
 
     async def send_message(self, chat_id: str, text: str) -> Dict[str, Any]:
+        if chat_id == "simulated-chat-id":
+            print(f"MOCK SEND MESSAGE to {chat_id}: {text}")
+            return {"id": "mock-message-id", "text": text}
+
         url = f"{self.base_url}/api/chats/{chat_id}/chat_messages"
         payload = {
             "message": {

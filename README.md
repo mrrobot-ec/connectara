@@ -60,7 +60,7 @@ GOOGLE_API_KEY=your_google_key (Optional fallback)
 SEARCH_ENGINE_ID=your_cx_id (Optional fallback)
 
 # Messaging (Series & Kafka)
-SERIES_API_BASE_URL=
+SERIES_API_BASE_URL=https://series-hackathon-service-202642739529.us-east1.run.app
 SERIES_API_KEY=your_series_key
 SERIES_SENDER_NUMBER=your_sender_number
 

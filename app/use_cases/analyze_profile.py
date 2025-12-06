@@ -40,13 +40,15 @@ class AnalyzeProfileUseCase:
             education_names = [edu.get('schoolName') for edu in profile.raw_data.get('education', []) if edu.get('schoolName')]
             post_urls = await self.discovery_service.find_posts(profile.full_name, username, education=education_names)
 
-            # 4. Retrieve Content
-            print(f"Retrieving content from {len(post_urls)} posts...")
-            posts_content = []
-            for url in post_urls[:5]: # Limit to 5 for speed
-                content = await self.retrieval_service.extract_content(url)
-                if content:
-                    posts_content.append(content)
+            # 4. Retrieve and Validate Content
+            print(f"Retrieving and validating content from {len(post_urls)} posts...")
+            posts_content = await self.retrieval_service.fetch_validated_content(
+                post_urls,
+                expected_name=profile.full_name,
+                expected_profile_url=profile.profile_url
+            )
+            # Take up to 5 validated posts
+            posts_content = posts_content[:5]
 
             full_text = f"{profile.summary or ''} {' '.join(posts_content)}"
 

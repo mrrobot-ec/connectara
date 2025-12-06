@@ -12,10 +12,11 @@ class SendMessageUseCase:
         return await self.messaging_service.send_message(chat_id, text)
 
 class ReceiveMessageUseCase:
-    def __init__(self, messaging_service: MessagingService, sentiment_analyzer: SentimentAnalyzer, social_graph: SocialGraph):
+    def __init__(self, messaging_service: MessagingService, sentiment_analyzer: SentimentAnalyzer, social_graph: SocialGraph, agent_service: 'AgentService'):
         self.messaging_service = messaging_service
         self.sentiment_analyzer = sentiment_analyzer
         self.social_graph = social_graph
+        self.agent_service = agent_service
 
     async def execute(self, event: Dict[str, Any]):
         """
@@ -44,13 +45,34 @@ class ReceiveMessageUseCase:
     async def _handle_message_received(self, data: Dict[str, Any]):
         chat_id = data.get("chat_id")
         text = data.get("text")
-        from_phone = data.get("from_phone")
 
-        # Check if message is from me (to avoid infinite loops)
-        is_from_me = False
+        # Better sender identification logic
         chat_handles = data.get("chat_handles", [])
+        sender_handle = None
+
+        # Find the handle that is NOT me
         for handle in chat_handles:
-            if handle.get("identifier") == from_phone and handle.get("is_me"):
+            if not handle.get("is_me"):
+                sender_handle = handle
+                break
+
+        if not sender_handle:
+            logger.warning(f"Could not identify sender for chat {chat_id}. Handles: {chat_handles}")
+            return
+
+        from_phone = sender_handle.get("identifier")
+
+        # Double check if message is from me (redundant but safe)
+        if data.get("from_phone") and data.get("from_phone") != from_phone:
+             pass
+
+        # Let's log all handles to debug.
+        logger.info(f"Processing message. Chat ID: {chat_id}. Handles: {chat_handles}. Raw from_phone: {data.get('from_phone')}")
+
+        # If the message is from the bot itself (e.g. sync), we ignore.
+        is_from_me = False
+        for handle in chat_handles:
+            if handle.get("identifier") == data.get("from_phone") and handle.get("is_me"):
                 is_from_me = True
                 break
 
@@ -58,9 +80,25 @@ class ReceiveMessageUseCase:
             logger.info("Ignoring message from self.")
             return
 
-        logger.info(f"Received message from {from_phone}: {text}")
+        actual_sender = data.get("from_phone")
 
-        # 1. Analyze Sentiment
+        logger.info(f"Received message from {actual_sender}: {text} and chat_id: {chat_id}")
+
+        # Delegate to Agent Service
+        await self.agent_service.process_message(actual_sender, text, chat_id)
+
+        # 2. Background Processing (Sentiment + Graph) - Optional: Can be moved to AgentService or kept here
+        # For now, let's keep it here or let AgentService handle it?
+        # The user said "every time someone send a message the llm is the one that has to respond... and then... we have average sentiment"
+        # So we should still record the interaction.
+
+        import asyncio
+        asyncio.create_task(self._process_message_background(actual_sender, text, chat_id))
+
+    async def _process_message_background(self, sender: str, text: str, chat_id: str):
+        logger.info(f"Starting background processing for message from {sender}")
+
+        # Analyze Sentiment
         sentiment_score = 0.0
         if text:
             try:
@@ -69,29 +107,10 @@ class ReceiveMessageUseCase:
             except Exception as e:
                 logger.error(f"Sentiment analysis failed: {e}")
 
-        # 2. Update Social Graph
-        # Assumption: For Hackathon, we treat phone numbers as usernames or identifiers if we don't have a mapping.
-        # Ideally, we should look up the Person by phone number.
-        # Let's assume 'Connectara' (the bot) is the 'to_username'.
-        # And 'from_phone' is the 'from_username'.
-        # We need to ensure these nodes exist. record_interaction does MERGE, so it will create them if missing.
+        # Update Social Graph
         try:
-            # We record interaction from User -> Bot
-            # But maybe we want to record User -> User if it's a group chat?
-            # For 1:1 with bot, it's User -> Bot.
-            # Let's use a placeholder for the bot's username.
             bot_username = "connectara_bot"
-
-            # We use the phone number as the username for the sender for now
-            sender_username = from_phone
-
-            await self.social_graph.record_interaction(sender_username, bot_username, sentiment_score, text)
-            logger.info(f"Recorded interaction: {sender_username} -> {bot_username} (Sentiment: {sentiment_score})")
+            await self.social_graph.record_interaction(sender, bot_username, sentiment_score, text)
+            logger.info(f"Recorded interaction: {sender} -> {bot_username} (Sentiment: {sentiment_score})")
         except Exception as e:
             logger.error(f"Failed to record interaction: {e}")
-
-        # 3. Reply (Echo + Sentiment)
-        if chat_id:
-            reply_text = f"Connectara received: {text}\nSentiment: {sentiment_score:.2f}"
-            await self.messaging_service.send_message(str(chat_id), reply_text)
-            logger.info(f"Sent reply to chat {chat_id}")

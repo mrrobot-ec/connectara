@@ -19,22 +19,27 @@ class KafkaEventConsumer(EventConsumer):
         if not all([self.bootstrap_servers, self.topic, self.group_id, self.sasl_username, self.sasl_password]):
              # Log warning but don't crash, maybe just disable consumer
              print("WARNING: Kafka credentials missing. Consumer will not start.")
+        else:
+             print(f"Kafka Config: Server={self.bootstrap_servers}, Topic={self.topic}, UserLen={len(self.sasl_username)}, PassLen={len(self.sasl_password)}")
 
     async def start(self):
         if not self.bootstrap_servers:
             return
 
         print(f"Starting Kafka Consumer for topic: {self.topic}")
+        import ssl
+        ssl_context = ssl.create_default_context()
         self.consumer = AIOKafkaConsumer(
             self.topic,
             bootstrap_servers=self.bootstrap_servers,
             group_id=self.group_id,
             sasl_mechanism="PLAIN",
             security_protocol="SASL_SSL",
+            ssl_context=ssl_context,
             sasl_plain_username=self.sasl_username,
             sasl_plain_password=self.sasl_password,
             value_deserializer=lambda x: json.loads(x.decode('utf-8')),
-            auto_offset_reset="latest" # Start from new messages
+            auto_offset_reset="earliest" # Ensure we don't miss messages
         )
         await self.consumer.start()
         self.running = True
@@ -47,17 +52,22 @@ class KafkaEventConsumer(EventConsumer):
             print("Kafka Consumer stopped.")
 
     async def _consume_loop(self):
-        try:
-            async for msg in self.consumer:
-                if not self.running:
-                    break
+        while self.running:
+            try:
+                async for msg in self.consumer:
+                    if not self.running:
+                        break
 
-                try:
-                    print(f"Kafka Message Received: {msg.value}")
-                    await self.handler(msg.value)
-                except Exception as e:
-                    print(f"Error processing Kafka message: {e}")
-        except Exception as e:
-            print(f"Kafka Consumer Loop Error: {e}")
-            # Optional: Implement reconnection logic here if needed,
-            # but aiokafka handles some of it.
+                    try:
+                        print(f"DEBUG: Raw Kafka Message Received: {msg.value}", flush=True)
+                        await self.handler(msg.value)
+                    except Exception as e:
+                        print(f"Error processing Kafka message: {e}")
+            except Exception as e:
+                print(f"Kafka Consumer Loop Error: {e}")
+                print("Reconnecting in 5 seconds...")
+                await asyncio.sleep(5)
+                # aiokafka consumer might need a restart or just a retry depending on the error.
+                # Ideally, we should check if consumer is closed.
+                # But for now, just retrying iteration might work if it's a fetch error.
+                # If connection is lost, aiokafka usually handles it, but if it raises out of the loop, we catch it here.

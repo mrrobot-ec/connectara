@@ -24,6 +24,7 @@ class Profile(BaseModel):
 class Person(BaseModel):
     """Entity representing a Person in the social graph."""
     username: str
+    phone_number: Optional[str] = None
     profile: Profile
     ocean_vector: Optional[List[float]] = None # [O, C, E, A, N]
     content_embedding: Optional[List[float]] = None # Semantic embedding of summary + posts

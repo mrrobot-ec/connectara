@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, BackgroundTasks, HTTPException
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from dependency_injector.wiring import inject, Provide
 from app.containers import Container
 from app.use_cases.analyze_profile import AnalyzeProfileUseCase
@@ -6,13 +6,18 @@ from app.use_cases.find_matches import FindMatchesUseCase
 from app.domain.ports import JobRepository
 from app.domain.models import AnalysisJob
 from pydantic import BaseModel
+import logging
 
-app = FastAPI()
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
 
 class AnalyzeRequest(BaseModel):
     username: str
 
-@app.post("/analyze")
+@router.post("/analyze")
 @inject
 async def analyze_profile(
     request: AnalyzeRequest,
@@ -29,7 +34,7 @@ async def analyze_profile(
 
     return {"job_id": job.job_id, "status": "PENDING"}
 
-@app.get("/jobs/{job_id}")
+@router.get("/jobs/{job_id}")
 @inject
 async def get_job_status(
     job_id: str,
@@ -41,7 +46,7 @@ async def get_job_status(
 
     return job
 
-@app.get("/matches/{username}")
+@router.get("/matches/{username}")
 @inject
 async def find_matches(
     username: str,
@@ -56,6 +61,66 @@ async def find_matches(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/health")
+@router.get("/health")
 def health_check():
     return {"status": "ok"}
+
+class LinkPhoneRequest(BaseModel):
+    username: str
+    phone_number: str
+
+@router.post("/link-phone")
+@inject
+async def link_phone(
+    request: LinkPhoneRequest,
+    social_graph: JobRepository = Depends(Provide[Container.neo4j_adapter])
+):
+    # Note: Neo4jAdapter implements both JobRepository and SocialGraph
+    # We are injecting it as JobRepository but it has the method.
+    # Ideally we should inject as SocialGraph or a combined interface.
+    # For now, we rely on the implementation.
+    if not hasattr(social_graph, 'link_phone_to_user'):
+         raise HTTPException(status_code=500, detail="Service does not support phone linking")
+
+    success = await social_graph.link_phone_to_user(request.username, request.phone_number)
+    if not success:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"status": "linked", "username": request.username, "phone_number": request.phone_number}
+
+from app.use_cases.messaging import ReceiveMessageUseCase
+
+class SimulateMessageRequest(BaseModel):
+    text: str
+    from_phone: str
+    to_phone: str
+
+@router.post("/messages/simulate")
+@inject
+async def simulate_message(
+    request: SimulateMessageRequest,
+    use_case: ReceiveMessageUseCase = Depends(Provide[Container.receive_message_use_case])
+):
+    """
+    Simulate an incoming Kafka message to trigger the full processing pipeline
+    (Sentiment Analysis -> Graph Update).
+    """
+    # Construct a payload that mimics the Kafka message structure
+    event = {
+        "event_type": "message.received",
+        "data": {
+            "text": request.text,
+            "chat_id": "simulated-chat-id",
+            "from_phone": request.from_phone,
+            "chat_handles": [
+                {"identifier": request.from_phone, "is_me": False},
+                {"identifier": request.to_phone, "is_me": True}
+            ]
+        }
+    }
+    
+    logger.info(f"Simulating message from {request.from_phone}: {request.text}")
+    
+    # Reuse the existing use case logic
+    await use_case.execute(event)
+    
+    return {"status": "simulated", "payload": event}

@@ -162,6 +162,8 @@ class Neo4jAdapter(SocialGraph, JobRepository):
         RETURN node.username AS username,
                node.full_name AS full_name,
                node.headline AS headline,
+               node.phone_number AS phone_number,
+               node.linkedin_url AS linkedin_url,
                node.ocean_vector AS ocean_vector,
                content_score
         """
@@ -223,11 +225,41 @@ class Neo4jAdapter(SocialGraph, JobRepository):
 
         return ranked_results[:k]
 
-    async def record_interaction(self, from_username: str, to_username: str, sentiment: float, text: str) -> None:
+    async def link_phone_to_user(self, username: str, phone_number: str) -> bool:
         query = """
-        MERGE (a:Person {username: $from_username})
+        MATCH (p:Person {username: $username})
+        SET p.phone_number = $phone_number
+        RETURN p
+        """
+        async with self.driver.session() as session:
+            result = await session.run(query, username=username, phone_number=phone_number)
+            record = await result.single()
+            return record is not None
+
+    async def record_interaction(self, from_username: str, to_username: str, sentiment: float, text: str) -> None:
+        # from_username is the phone number (identifier)
+        query = """
         MERGE (b:Person {username: $to_username})
-        MERGE (a)-[r:INTERACTED_WITH]->(b)
+        WITH b
+
+        OPTIONAL MATCH (p:Person {phone_number: $from_username})
+
+        WITH b, p, $from_username AS from_username_param
+        CALL (p, from_username_param) {
+            WITH p, from_username_param
+            WITH p WHERE p IS NOT NULL
+            RETURN p AS sender
+
+            UNION
+
+            WITH p, from_username_param
+            WITH p WHERE p IS NULL
+            MERGE (new_sender:Person {username: from_username_param})
+            SET new_sender.phone_number = from_username_param
+            RETURN new_sender AS sender
+        }
+
+        MERGE (sender)-[r:INTERACTED_WITH]->(b)
         ON CREATE SET
             r.weight = 1,
             r.avg_sentiment = $sentiment,
@@ -241,6 +273,48 @@ class Neo4jAdapter(SocialGraph, JobRepository):
         """
         async with self.driver.session() as session:
             await session.run(query, from_username=from_username, to_username=to_username, sentiment=sentiment)
+
+    async def find_recent_interactions(self, username: str, limit: int = 5, min_sentiment: float = 0.0) -> List[Dict[str, Any]]:
+        # Find people the user (identified by phone number or username) has interacted with
+        # We assume 'username' here is the phone number if it's an incoming message context,
+        # or a username if it's a registered user.
+        # The query checks both directions or just outgoing?
+        # "most recent active user on average sentiment" -> likely people I talked to.
+
+        query = """
+        MATCH (p:Person {phone_number: $username})-[r:INTERACTED_WITH]-(other:Person)
+        WHERE r.avg_sentiment >= $min_sentiment
+        RETURN other.username AS username,
+               other.full_name AS full_name,
+               r.avg_sentiment AS avg_sentiment,
+               r.last_interaction AS last_interaction
+        ORDER BY r.last_interaction DESC
+        LIMIT $limit
+        """
+        async with self.driver.session() as session:
+            result = await session.run(query, username=username, min_sentiment=min_sentiment, limit=limit)
+            records = await result.data()
+            # Convert datetime objects to string if needed, or keep as is.
+            # Neo4j driver returns DateTime objects.
+            for r in records:
+                if r.get("last_interaction"):
+                    r["last_interaction"] = r["last_interaction"].isoformat()
+            return records
+
+    async def find_random_users(self, limit: int = 10, exclude_username: str = None) -> List[Dict[str, Any]]:
+        query = """
+        MATCH (p:Person)
+        WHERE ($exclude_username IS NULL OR p.username <> $exclude_username)
+        RETURN p.username AS username,
+               p.full_name AS full_name,
+               p.headline AS headline,
+               p.phone_number AS phone_number,
+               p.linkedin_url AS linkedin_url
+        LIMIT $limit
+        """
+        async with self.driver.session() as session:
+            result = await session.run(query, limit=limit, exclude_username=exclude_username)
+            return await result.data()
 
     # JobRepository Implementation
     async def create_job(self, job: AnalysisJob) -> None:

@@ -17,7 +17,12 @@ class DiscoveryService(ABC):
 class RetrievalService(ABC):
     @abstractmethod
     async def fetch_content(self, urls: List[str]) -> List[str]:
-        """Fetch content from URLs, handling dynamic content and throttling."""
+        """Fetch content from multiple URLs."""
+        pass
+
+    @abstractmethod
+    async def fetch_validated_content(self, urls: List[str], expected_name: str, expected_profile_url: str) -> List[str]:
+        """Fetch and validate content from URLs, ensuring posts belong to the expected author."""
         pass
 
     @abstractmethod
@@ -59,6 +64,16 @@ class SocialGraph(ABC):
         """Record an interaction between two users with sentiment."""
         pass
 
+    @abstractmethod
+    async def link_phone_to_user(self, username: str, phone_number: str) -> bool:
+        """Link a phone number to a user."""
+        pass
+
+    @abstractmethod
+    async def find_recent_interactions(self, username: str, limit: int = 5, min_sentiment: float = 0.0) -> List[Dict[str, Any]]:
+        """Find recent interactions for a user."""
+        pass
+
 class MessagingService(ABC):
     @abstractmethod
     async def create_chat(self, send_from: str, phone_numbers: List[str], message_text: str) -> Dict[str, Any]:
@@ -97,4 +112,26 @@ class JobRepository(ABC):
 
     @abstractmethod
     async def update_job_status(self, job_id: str, status: JobStatus, result: Optional[Dict] = None, error: Optional[str] = None) -> None:
+        pass
+
+class MessagingAdminService(ABC):
+    @abstractmethod
+    async def get_group_status(self, group_id: str) -> Dict[str, Any]:
+        """Get consumer group lag and offsets."""
+        pass
+
+    @abstractmethod
+    async def reset_offsets_to_latest(self, group_id: str) -> None:
+        """Reset consumer group offsets to the latest (purge)."""
+        pass
+
+    @abstractmethod
+    async def reset_offsets_to_earliest(self, group_id: str) -> None:
+        """Reset consumer group offsets to the earliest (replay)."""
+        pass
+
+class LLMService(ABC):
+    @abstractmethod
+    async def generate_response(self, prompt: str, context: Dict[str, Any] = None) -> str:
+        """Generate a response from the LLM."""
         pass

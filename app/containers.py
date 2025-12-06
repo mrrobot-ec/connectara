@@ -15,6 +15,9 @@ from app.infrastructure.kafka_consumer import KafkaEventConsumer
 from app.infrastructure.sentiment_adapter import SentimentAdapter
 from app.use_cases.messaging import SendMessageUseCase, ReceiveMessageUseCase
 
+from app.infrastructure.llm_adapter import GeminiLLMAdapter
+from app.use_cases.agent_service import AgentService
+
 class Container(containers.DeclarativeContainer):
     wiring_config = containers.WiringConfiguration(modules=["app.interfaces.api"])
 
@@ -50,6 +53,11 @@ class Container(containers.DeclarativeContainer):
 
     sentiment_analyzer = providers.Singleton(SentimentAdapter)
 
+    llm_service = providers.Singleton(
+        GeminiLLMAdapter,
+        api_key=os.getenv("GOOGLE_API_KEY")
+    )
+
     # Use Cases
     analyze_profile_use_case = providers.Factory(
         AnalyzeProfileUseCase,
@@ -72,11 +80,20 @@ class Container(containers.DeclarativeContainer):
         messaging_service=messaging_service
     )
 
+    agent_service = providers.Factory(
+        AgentService,
+        llm_service=llm_service,
+        social_graph=neo4j_adapter,
+        find_matches_use_case=find_matches_use_case,
+        messaging_service=messaging_service
+    )
+
     receive_message_use_case = providers.Factory(
         ReceiveMessageUseCase,
         messaging_service=messaging_service,
         sentiment_analyzer=sentiment_analyzer,
-        social_graph=neo4j_adapter
+        social_graph=neo4j_adapter,
+        agent_service=agent_service
     )
 
     # Event Consumer
