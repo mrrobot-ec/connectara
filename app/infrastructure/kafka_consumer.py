@@ -3,7 +3,7 @@ from app.domain.ports import EventConsumer
 import os
 import json
 import asyncio
-from typing import Callable, Awaitable
+from typing import Callable, Awaitable, Dict, Any
 
 class KafkaEventConsumer(EventConsumer):
     def __init__(self, handler: Callable[[Dict[str, Any]], Awaitable[None]]):

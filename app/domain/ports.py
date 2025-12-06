@@ -17,6 +17,9 @@ class DiscoveryService(ABC):
 class RetrievalService(ABC):
     @abstractmethod
     async def fetch_content(self, urls: List[str]) -> List[str]:
+        """Fetch content from URLs, handling dynamic content and throttling."""
+        pass
+
     @abstractmethod
     async def extract_content(self, url: str) -> Optional[str]:
         """Fetch content from a single URL."""

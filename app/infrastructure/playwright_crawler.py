@@ -1,6 +1,6 @@
 import asyncio
 import random
-from typing import List
+from typing import List, Optional
 from playwright.async_api import async_playwright
 from app.domain.ports import RetrievalService
 
