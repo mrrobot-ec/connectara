@@ -54,12 +54,12 @@ class AgentService:
         - Be a friendly conversational partner. You can chat about the weather, time, technology, or any general topic.
         - Do NOT push the user to find matches unless they ask for it.
         - If the user explicitly asks to "find matches", "meet people", or "who should I talk to", then trigger the 'find_matches' action.
-        - If the user asks for the current time, you can provide it (assume UTC or ask for their timezone).
-        - If the user asks for weather, you can say you don't have access to real-time weather data yet.
+        - If the user specifies a number of matches (e.g., "show me 5 people"), include that in the params as "num_matches". Default is 3 if not specified. Max is 10.
+        - If the user specifies a number of matches (e.g., "show me 5 people"), include that in the params as "num_matches". Default is 3 if not specified. Max is 10.
 
         Output Format:
         If you want to reply with text only: just write the text.
-        If you want to trigger an action: write a JSON object like {{"action": "find_matches", "params": {{...}}, "reply_text": "Sure, let me look for matches..."}}
+        If you want to trigger an action: write a JSON object like {{"action": "find_matches", "params": {{"num_matches": 3}}, "reply_text": "Sure, let me look for matches..."}}
 
         Do not output markdown code blocks for the JSON, just the raw JSON string if it's an action.
         """
@@ -76,7 +76,9 @@ class AgentService:
                 reply_text = action_data.get("reply_text", "")
 
                 if action == "find_matches":
-                    await self._handle_find_matches(sender_phone, chat_id, reply_text)
+                    params = action_data.get("params", {})
+                    num_matches = params.get("num_matches", 3)
+                    await self._handle_find_matches(sender_phone, chat_id, reply_text, limit=num_matches)
                 else:
                     # Unknown action, just send the text
                     await self.messaging_service.send_message(chat_id, reply_text)
@@ -91,17 +93,20 @@ class AgentService:
             logger.error(f"Error in agent processing: {e}")
             await self.messaging_service.send_message(chat_id, "I encountered an error while processing your request.")
 
-    async def _handle_find_matches(self, username: str, chat_id: str, initial_reply: str):
+    async def _handle_find_matches(self, username: str, chat_id: str, initial_reply: str, limit: int = 3):
         # Send the initial "I'm looking..." message
         if initial_reply:
             await self.messaging_service.send_message(chat_id, initial_reply)
 
         try:
+            # Cap limit at 10
+            limit = min(max(int(limit), 1), 10)
+
             # Execute Find Matches
             # Note: FindMatchesUseCase expects a username. If 'username' is a phone number,
             # we hope it matches the 'username' field in Neo4j or we need to resolve it.
             # For this implementation, we assume phone number IS the username or they are linked.
-            matches_result = await self.find_matches_use_case.execute(username, k=10)
+            matches_result = await self.find_matches_use_case.execute(username, k=limit)
             matches = matches_result.get("matches", [])
 
             if not matches:
@@ -120,6 +125,14 @@ class AgentService:
                     score_text = f"- {score}% Match"
 
                 line = f"- {m.get('full_name', 'Unknown')} (@{m.get('username')}) {score_text}"
+                if m.get('headline'):
+                    line += f"\n  Headline: {m.get('headline')}"
+                if m.get('summary'):
+                    # Truncate summary if too long
+                    summary = m.get('summary')
+                    if len(summary) > 150:
+                        summary = summary[:147] + "..."
+                    line += f"\n  Summary: {summary}"
                 if m.get('phone_number'):
                     line += f"\n  Phone: {m.get('phone_number')}"
                 if m.get('linkedin_url'):

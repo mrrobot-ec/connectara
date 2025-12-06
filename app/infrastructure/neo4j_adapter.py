@@ -83,7 +83,8 @@ class Neo4jAdapter(SocialGraph, JobRepository):
 
     async def get_person(self, username: str) -> Optional[Person]:
         query = """
-        MATCH (p:Person {username: $username})
+        MATCH (p:Person)
+        WHERE p.username = $username OR p.phone_number = $username
         RETURN p
         """
         async with self.driver.session() as session:
@@ -152,25 +153,31 @@ class Neo4jAdapter(SocialGraph, JobRepository):
             records = await result.data()
             return records
 
-    async def find_matches_hybrid(self, content_embedding: List[float], ocean_vector: List[float], k: int = 10, exclude_username: str = None) -> List[Dict[str, Any]]:
+    async def find_matches_hybrid(self, content_embedding: List[float], ocean_vector: List[float], k: int = 10, exclude_usernames: List[str] = None) -> List[Dict[str, Any]]:
+        if exclude_usernames is None:
+            exclude_usernames = []
+
         # 1. Candidate Retrieval (Content Similarity)
         # Fetch top 50 candidates based on interests (content embedding)
         query = """
         CALL db.index.vector.queryNodes('person_content_index', 50, $content_embedding)
         YIELD node, score AS content_score
-        WHERE ($exclude_username IS NULL OR node.username <> $exclude_username)
+        WHERE (node.username IS NOT NULL AND NOT node.username IN $exclude_usernames)
+          AND (node.phone_number IS NULL OR NOT node.phone_number IN $exclude_usernames)
         RETURN node.username AS username,
                node.full_name AS full_name,
                node.headline AS headline,
+               node.summary AS summary,
                node.phone_number AS phone_number,
                node.linkedin_url AS linkedin_url,
+               node.updated_at AS last_active,
                node.ocean_vector AS ocean_vector,
                content_score
         """
 
         candidates = []
         async with self.driver.session() as session:
-            result = await session.run(query, content_embedding=content_embedding, exclude_username=exclude_username)
+            result = await session.run(query, content_embedding=content_embedding, exclude_usernames=exclude_usernames)
             candidates = await result.data()
 
         # 2. Re-ranking (Personality Compatibility)
@@ -301,19 +308,25 @@ class Neo4jAdapter(SocialGraph, JobRepository):
                     r["last_interaction"] = r["last_interaction"].isoformat()
             return records
 
-    async def find_random_users(self, limit: int = 10, exclude_username: str = None) -> List[Dict[str, Any]]:
+    async def find_random_users(self, limit: int = 10, exclude_usernames: List[str] = None) -> List[Dict[str, Any]]:
+        if exclude_usernames is None:
+            exclude_usernames = []
+
         query = """
         MATCH (p:Person)
-        WHERE ($exclude_username IS NULL OR p.username <> $exclude_username)
+        WHERE (p.username IS NOT NULL AND NOT p.username IN $exclude_usernames)
+          AND (p.phone_number IS NULL OR NOT p.phone_number IN $exclude_usernames)
         RETURN p.username AS username,
                p.full_name AS full_name,
                p.headline AS headline,
+               p.summary AS summary,
                p.phone_number AS phone_number,
-               p.linkedin_url AS linkedin_url
+               p.linkedin_url AS linkedin_url,
+               p.updated_at AS last_active
         LIMIT $limit
         """
         async with self.driver.session() as session:
-            result = await session.run(query, limit=limit, exclude_username=exclude_username)
+            result = await session.run(query, limit=limit, exclude_usernames=exclude_usernames)
             return await result.data()
 
     # JobRepository Implementation
