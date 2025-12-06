@@ -34,8 +34,6 @@ class SeriesMessagingAdapter(MessagingService):
             response.raise_for_status()
             return response.json()
 
-    
-
     async def send_message(self, chat_id: str, text: str) -> Dict[str, Any]:
         if chat_id == "simulated-chat-id":
             print(f"MOCK SEND MESSAGE to {chat_id}: {text}")
@@ -47,9 +45,6 @@ class SeriesMessagingAdapter(MessagingService):
                 "text": text
             }
         }
-
-        #if image is not None:
-
         async with httpx.AsyncClient() as client:
             response = await client.post(url, json=payload, headers=self.headers)
             response.raise_for_status()
@@ -64,28 +59,3 @@ class SeriesMessagingAdapter(MessagingService):
             response = await client.post(url, json=payload, headers=self.headers)
             response.raise_for_status()
             return response.json()
-
-    async def mark_as_read(self, chat_id: str) -> Dict[str, Any]:
-        """Mark all messages in the chat as read on Linq."""
-        url = f"{self.base_url}/api/chats/{chat_id}/mark_as_read"
-        async with httpx.AsyncClient() as client:
-            response = await client.put(url, headers=self.headers)
-            response.raise_for_status()
-            return response.json() if response.status_code == 200 else {"status": "success"}
-
-    async def start_typing(self, chat_id: str) -> Dict[str, Any]:
-        """Start typing indicator in a chat."""
-        url = f"{self.base_url}/api/chats/{chat_id}/start_typing"
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, headers=self.headers)
-            response.raise_for_status()
-            return response.json() if response.status_code == 200 else {"status": "success"}
-
-    async def stop_typing(self, chat_id: str) -> Dict[str, Any]:
-        """Stop typing indicator in a chat."""
-        url = f"{self.base_url}/api/chats/{chat_id}/stop_typing"
-        async with httpx.AsyncClient() as client:
-            response = await client.delete(url, headers=self.headers)
-            response.raise_for_status()
-            return response.json() if response.status_code == 200 else {"status": "success"}
-

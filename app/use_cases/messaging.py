@@ -9,11 +9,6 @@ class SendMessageUseCase:
         self.messaging_service = messaging_service
 
     async def execute(self, chat_id: str, text: str) -> Dict[str, Any]:
-        try:
-            await self.messaging_service.stop_typing(chat_id=chat_id)
-        except Exception as e: #loose logic to passthrough if error when double-stop
-            pass
-        
         return await self.messaging_service.send_message(chat_id, text)
 
 class ReceiveMessageUseCase:
@@ -50,13 +45,6 @@ class ReceiveMessageUseCase:
     async def _handle_message_received(self, data: Dict[str, Any]):
         chat_id = data.get("chat_id")
         text = data.get("text")
-
-        await self.messaging_service.mark_as_read(chat_id=chat_id)
-
-        try:
-            await self.messaging_service.start_typing(chat_id=chat_id)
-        except Exception as e: #loose logic to passthrough if error when double-start
-            pass
 
         # Better sender identification logic
         chat_handles = data.get("chat_handles", [])
@@ -126,4 +114,3 @@ class ReceiveMessageUseCase:
             logger.info(f"Recorded interaction: {sender} -> {bot_username} (Sentiment: {sentiment_score})")
         except Exception as e:
             logger.error(f"Failed to record interaction: {e}")
-

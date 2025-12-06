@@ -90,21 +90,6 @@ class MessagingService(ABC):
         """Check if a phone number is iMessage available."""
         pass
 
-    @abstractmethod
-    async def mark_as_read(self, chat_id: str) -> Dict[str, Any]:
-        """Mark all messages in a chat as read."""
-        pass
-
-    @abstractmethod
-    async def start_typing(self, chat_id: str) -> Dict[str, Any]:
-        """Start typing indicator in a chat."""
-        pass
-
-    @abstractmethod
-    async def stop_typing(self, chat_id: str) -> Dict[str, Any]:
-        """Stop typing indicator in a chat."""
-        pass
-
 class EventConsumer(ABC):
     @abstractmethod
     async def start(self):
