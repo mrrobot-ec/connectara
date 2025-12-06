@@ -24,10 +24,33 @@ class AgentService:
 
         # 1. Gather Context
         # Check if we know this user
-        person = await self.social_graph.get_person(sender_phone) # Assuming get_person works with phone or we need a lookup
-        # Actually get_person takes username. We might need a lookup by phone.
-        # For now, let's assume the sender_phone IS the username or we can find them.
-        # If not found, we treat them as a new user or guest.
+        person = await self.social_graph.get_person(sender_phone)
+
+        # Get Chat History
+        chat_history_text = ""
+        try:
+            messages = await self.messaging_service.get_chat_messages(chat_id, limit=10)
+            # Sort by created_at ascending (oldest first)
+            # Assuming messages have 'created_at' or 'id' to sort.
+            # Usually API returns newest first or oldest first. Let's reverse if needed.
+            # Let's assume the list is ordered.
+            # We need to distinguish who sent what.
+            # Message object has 'from_phone' or similar?
+            # Docs: "from_phone" in message object.
+
+            history_lines = []
+            for msg in reversed(messages): # Assuming API returns newest first
+                sender = msg.get("from_phone")
+                content = msg.get("text", "")
+                if not content:
+                    continue
+
+                role = "User" if sender == sender_phone else "You (Connectara)"
+                history_lines.append(f"{role}: {content}")
+
+            chat_history_text = "\n".join(history_lines)
+        except Exception as e:
+            logger.warning(f"Failed to fetch chat history: {e}")
 
         # Let's try to find recent interactions to give context to the LLM
         recent_interactions = await self.social_graph.find_recent_interactions(sender_phone, limit=3)
@@ -46,7 +69,10 @@ class AgentService:
         You are talking to a user with phone number {sender_phone}.
 
         Context:
-        Recent Interactions: {recent_interactions}
+        Chat History:
+        {chat_history_text}
+
+        Recent Interactions (Graph): {recent_interactions}
 
         User Message: "{text}"
 

@@ -46,6 +46,13 @@ class ReceiveMessageUseCase:
         chat_id = data.get("chat_id")
         text = data.get("text")
 
+        # Mark as read immediately
+        if chat_id:
+            try:
+                await self.messaging_service.mark_as_read(chat_id)
+            except Exception as e:
+                logger.warning(f"Failed to mark chat {chat_id} as read: {e}")
+
         # Better sender identification logic
         chat_handles = data.get("chat_handles", [])
         sender_handle = None

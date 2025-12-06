@@ -90,6 +90,16 @@ class MessagingService(ABC):
         """Check if a phone number is iMessage available."""
         pass
 
+    @abstractmethod
+    async def mark_as_read(self, chat_id: str) -> None:
+        """Mark a chat as read."""
+        pass
+
+    @abstractmethod
+    async def get_chat_messages(self, chat_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent messages from a chat."""
+        pass
+
 class EventConsumer(ABC):
     @abstractmethod
     async def start(self):
